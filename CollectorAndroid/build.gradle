@@ -84,7 +84,7 @@ paperwork {
             gitSha      : gitSha(),
             gitTag      : gitTag(),
             gitInfo     : gitInfo(),
-            gitBranch   : gitBranch(),
+            gitBranch   : shell('git rev-parse --abbrev-ref HEAD'),
             userName    : System.getProperty("user.name") // OS user
     ]
 }
@@ -114,7 +114,7 @@ android {
     defaultConfig {
         applicationId project.group + '.sapelli.collector'
         minSdkVersion 14 // = GINGERBREAD_MR1 (as found on Samsung Galaxy Xcover(1))
-        targetSdkVersion 28
+        targetSdkVersion 29
         // = LOLLIPOP_MR1 (for now we do not target 23 or higher, this is to avoid the run-time/revocable permissions of Android 6.0 and higher)
 
         versionName project.version // defined in root build.gradle file
@@ -252,6 +252,10 @@ task releaseSapelliCollector {
     uploadReleaseWrapper.mustRunAfter(assembleReleaseWrapper)
 }
 
+task wrapper(type: Wrapper){
+
+}
+
 dependencies {
     // Local libs:
     //compile fileTree(dir: 'libs', include: ['*.jar'])
@@ -264,7 +268,7 @@ dependencies {
 
     // Google:
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation 'androidx.appcompat:appcompat:1.0.0'
+    implementation 'androidx.appcompat:appcompat:1.2.0'
 
     // Other dependencies:
     implementation 'com.github.michalis-vitos:aFileChooser:e359025948'
