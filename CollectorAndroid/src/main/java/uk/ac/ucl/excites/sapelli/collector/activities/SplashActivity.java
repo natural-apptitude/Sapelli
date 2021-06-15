@@ -43,6 +43,7 @@ import uk.ac.ucl.excites.sapelli.collector.BuildInfo;
 import uk.ac.ucl.excites.sapelli.collector.CollectorApp;
 import uk.ac.ucl.excites.sapelli.collector.R;
 import uk.ac.ucl.excites.sapelli.collector.db.CollectorPreferences;
+import uk.ac.ucl.excites.sapelli.collector.db.FileStorageHelper;
 import uk.ac.ucl.excites.sapelli.collector.io.AndroidFileStorageProvider;
 import uk.ac.ucl.excites.sapelli.collector.io.FileStorageProvider;
 import uk.ac.ucl.excites.sapelli.collector.io.FileStorageRemovedException;
@@ -57,7 +58,7 @@ import uk.ac.ucl.excites.sapelli.storage.db.sql.sqlite.SQLiteRecordStore;
 
 import static uk.ac.ucl.excites.sapelli.collector.CollectorApp.DATABASE_BASENAME;
 
-public class SplashActivity extends AppCompatActivity implements EasyPermissions.PermissionCallbacks {
+public class SplashActivity extends BaseActivity implements EasyPermissions.PermissionCallbacks {
 
     // STATICS------------------------------------------------------------
     static protected final String TAG = "CollectorApp";
@@ -105,34 +106,8 @@ public class SplashActivity extends AppCompatActivity implements EasyPermissions
 
     @AfterPermissionGranted(PERMISSIONS_REQUEST)
     private void initializations() {
-        // Build info:
-        getCollectorApp().setBuildInfo(BuildInfo.GetInstance(getApplicationContext()));
-
-        Debug.d("CollectorApp started.\nBuild info:\n" + getCollectorApp().getBuildInfo().getAllInfo());
-
-        // Start Fabric
-        setFabric();
-
-        // Set Timber for logging
-        setTimber();
-
-        // Set Stetho for debugging
-        setStetho();
-
-        // Get collector preferences:
-        getCollectorApp().setPreferences(new CollectorPreferences(getApplicationContext()));
-
-        // Initialise file storage:
-        try {
-            getCollectorApp().setFileStorageProvider(initialiseFileStorage()); // throws FileStorageException
-        } catch (FileStorageException fse) {
-//            getCollectorApp().fileStorageException = fse; // postpone throwing until getFileStorageProvider() is called!
-        }
-
-        // Set up a CrashReporter (will use dumps folder):
-        if (getCollectorApp().getFileStorageProvider() != null)
-            Thread.setDefaultUncaughtExceptionHandler(new CrashReporter(getCollectorApp().getFileStorageProvider(), getResources().getString(R.string.app_name)));
-
+        init();
+//
         // Create shortcut to Sapelli Collector on Home Screen:
         if (getCollectorApp().getPreferences().isFirstInstallation()) {
             // Create shortcut
@@ -148,196 +123,6 @@ public class SplashActivity extends AppCompatActivity implements EasyPermissions
                 finish();
             }
         }, 1000);
-    }
-
-    /**
-     * Set up Fabric
-     */
-    private void setFabric() {
-        // Set up Crashlytics, disabled for debug builds
-        final CrashlyticsCore crashlyticsCore = new CrashlyticsCore.Builder().disabled(BuildConfig.DEBUG).build();
-        final Crashlytics crashlyticsKit = new Crashlytics.Builder().core(crashlyticsCore).build();
-        Fabric.with(this, crashlyticsKit);
-
-        Crashlytics.setString(CRASHLYTICS_VERSION_INFO, getCollectorApp().getBuildInfo().getNameAndVersion() + " [" + getCollectorApp().getBuildInfo().getExtraVersionInfo() + "]");
-        Crashlytics.setString(CRASHLYTICS_BUILD_INFO, getCollectorApp().getBuildInfo().getBuildInfo());
-    }
-
-    /**
-     * Set up Timber for logging
-     */
-    private void setTimber() {
-        // Enable Timber
-        if (BuildConfig.DEBUG)
-            Timber.plant(new DebugTree());
-        else
-            Timber.plant(new CrashlyticsTree());
-    }
-
-    /**
-     * Set up Stetho for debugging
-     */
-    private void setStetho() {
-        // Enable Stetho in Debug versions
-        if (!BuildConfig.DEBUG)
-            return;
-
-        Timber.d("Enable Stetho");
-
-        Stetho.initialize(Stetho.newInitializerBuilder(this)
-                .enableWebKitInspector(new InspectorModulesProvider() {
-                    @Override
-                    public Iterable<ChromeDevtoolsDomain> get() {
-                        return new Stetho.DefaultInspectorModulesBuilder(SplashActivity.this)
-                                .provideDatabaseDriver(createCustomDatabaseDriver(SplashActivity.this))
-                                .finish();
-                    }
-                }).build());
-    }
-
-    private SqliteDatabaseDriver createCustomDatabaseDriver(Context context) {
-        return new SqliteDatabaseDriver(context, new DatabaseFilesProvider() {
-            @Override
-            public List<File> getDatabaseFiles() {
-                List<File> dbs = new ArrayList<>();
-                final String dbPath = SQLiteRecordStore.GetDBFileName(getCollectorApp().getFileStorageProvider().getDBFolder(false).getAbsolutePath() + File.separator + getCollectorApp().DATABASE_BASENAME);
-                Timber.d("Try to connect to db at: %s", dbPath);
-                dbs.add(new File(dbPath));
-                return dbs;
-            }
-        }, new DefaultDatabaseConnectionProvider());
-    }
-
-    /**
-     * @return
-     * @throws FileStorageException
-     */
-    private FileStorageProvider initialiseFileStorage() throws FileStorageException {
-        File sapelliFolder = null;
-
-        // Try to get Sapelli folder path from preferences:
-        try {
-            sapelliFolder = new File(getCollectorApp().getPreferences().getSapelliFolderPath());
-        } catch (NullPointerException npe) {
-        }
-
-        // Did we get the folder path from preferences? ...
-        if (sapelliFolder == null) {    // No: first installation or reset
-
-            // Find appropriate files dir (using application-specific folder, which is removed upon app uninstall!):
-            File[] paths = DeviceControl.getExternalFilesDirs(this, null);
-            if (paths != null && paths.length != 0) {
-                // We count backwards because we prefer secondary external storage (which is likely to be on an SD card rather unremovable memory)
-                for (int p = paths.length - 1; p >= 0; p--)
-                    if (isMountedReadableWritableDir(paths[p])) {
-                        sapelliFolder = paths[p];
-                        break;
-                    }
-            }
-
-            // Do we have a path?
-            if (sapelliFolder != null)
-                // Yes: store it in the preferences:
-                getCollectorApp().getPreferences().setSapelliFolder(sapelliFolder.getAbsolutePath());
-            else
-                // No :-(
-                throw new FileStorageUnavailableException();
-        } else {    // Yes, we got path from preferences, check if it is available ...
-            if (!isMountedReadableWritableDir(sapelliFolder)) // (will also attempt to create the directory if it doesn't exist)
-                // No :-(
-                throw new FileStorageRemovedException(sapelliFolder.getAbsolutePath());
-        }
-
-        // If we get here this means we have a non-null sapelliFolder object representing an accessible path...
-
-        // Try to get the Android Downloads folder...
-        File downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        if (!isMountedReadableWritableDir(downloadsFolder)) // check if we can access it (will also attempt to create the directory if it doesn't exist)
-            // No :-(
-            throw new FileStorageException("Cannot access downloads folder: " + downloadsFolder.getAbsolutePath());
-
-        // Create a test database to get the DB folder
-        TestDatabaseHelper testDatabaseHelper = new TestDatabaseHelper(this);
-
-        // Try to get the Databases folder...
-        File databaseFolder = testDatabaseHelper.getDatabaseFolder();
-        if (!isMountedReadableWritableDir(databaseFolder)) // check if we can access it (will also attempt to create the directory if it doesn't exist)
-            // No :-(
-            throw new FileStorageException("Cannot access database folder: " + databaseFolder.getAbsolutePath());
-
-        final AndroidFileStorageProvider androidFileStorageProvider = new AndroidFileStorageProvider(sapelliFolder, databaseFolder, downloadsFolder);
-
-        moveDB(androidFileStorageProvider);
-
-        return androidFileStorageProvider; // Android specific subclass of FileStorageProvider, which generates .nomedia files
-    }
-
-    /**
-     * The location for the Sapelli database has changed on Sapelli v2.0.0 beta 27, therefore move
-     * the DB from the old location to the new one.
-     *
-     * @param androidFileStorageProvider
-     */
-    private void moveDB(AndroidFileStorageProvider androidFileStorageProvider) {
-
-        final File oldDBFolder = androidFileStorageProvider.getOldDBFolder(false);
-        final File nedDBFolder = androidFileStorageProvider.getDBFolder(false);
-        Timber.d("Old DB path: %s", oldDBFolder);
-        Timber.d("New DB path: %s", nedDBFolder);
-
-        try {
-            File oldDB = new File(SQLiteRecordStore.GetDBFileName(oldDBFolder.getAbsolutePath() + File.separator + DATABASE_BASENAME));
-            File newDB = new File(nedDBFolder + File.separator + oldDB.getName());
-
-            if (!newDB.exists())
-                newDB.createNewFile();
-
-            if (oldDB.exists() && newDB.exists()) {
-                Timber.d("Move Old DB: %s to %s", oldDB, newDB);
-
-                FileChannel src = new FileInputStream(oldDB).getChannel();
-                FileChannel dst = new FileOutputStream(newDB).getChannel();
-                dst.transferFrom(src, 0, src.size());
-                src.close();
-                dst.close();
-
-                // Delete the old DB
-                FileUtils.deleteQuietly(oldDB);
-
-                // Delete all other files in the old DB e.g. the journal etc.
-                for (File file : oldDBFolder.listFiles())
-                    FileUtils.deleteQuietly(file);
-
-                // Finally delete the old directory
-                FileUtils.deleteQuietly(oldDBFolder);
-            }
-        } catch (Exception e) {
-            Timber.e(e);
-        }
-    }
-
-    /**
-     * Check if a directory is on a mounted storage and writable/readable
-     *
-     * @param dir
-     * @return
-     * @throws FileStorageException
-     */
-    private boolean isMountedReadableWritableDir(File dir) throws FileStorageException {
-        try {
-            return    // Null check:
-                    (dir != null)
-                            // Try to create the directory if it is not there
-                            && FileHelpers.createDirectory(dir)
-                            /* Check storage state, accepting both MEDIA_MOUNTED and MEDIA_UNKNOWN.
-                             * 	The MEDIA_UNKNOWN state occurs when a path isn't backed by known storage media; e.g. the SD Card on
-                             * the Samsung Xcover 2 (the detection of which we have to force in DeviceControl#getExternalFilesDirs()). */
-                            && (Environment.MEDIA_MOUNTED.equals(EnvironmentCompat.getStorageState(dir)) || EnvironmentCompat.MEDIA_UNKNOWN.equals(EnvironmentCompat.getStorageState(dir)))
-                            // Check whether we have read & write access to the directory:
-                            && FileHelpers.isReadableWritableDirectory(dir);
-        } catch (Exception e) {
-            throw new FileStorageException("Unable to create or determine status of directory: " + (dir != null ? dir.getAbsolutePath() : "null"), e);
-        }
     }
 
     @Override

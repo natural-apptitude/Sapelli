@@ -19,17 +19,43 @@
 package uk.ac.ucl.excites.sapelli.collector.activities;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
+
+import com.crashlytics.android.Crashlytics;
+import com.crashlytics.android.core.CrashlyticsCore;
+import com.facebook.stetho.InspectorModulesProvider;
+import com.facebook.stetho.Stetho;
+import com.facebook.stetho.inspector.database.DatabaseFilesProvider;
+import com.facebook.stetho.inspector.database.DefaultDatabaseConnectionProvider;
+import com.facebook.stetho.inspector.database.SqliteDatabaseDriver;
+import com.facebook.stetho.inspector.protocol.ChromeDevtoolsDomain;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+import gr.michalisvitos.timberutils.CrashlyticsTree;
+import gr.michalisvitos.timberutils.DebugTree;
+import io.fabric.sdk.android.Fabric;
+import timber.log.Timber;
+import uk.ac.ucl.excites.sapelli.collector.BuildConfig;
+import uk.ac.ucl.excites.sapelli.collector.BuildInfo;
 import uk.ac.ucl.excites.sapelli.collector.CollectorApp;
 import uk.ac.ucl.excites.sapelli.collector.CollectorApp.AndroidCollectorClient;
 import uk.ac.ucl.excites.sapelli.collector.R;
 import uk.ac.ucl.excites.sapelli.collector.db.CollectorPreferences;
+import uk.ac.ucl.excites.sapelli.collector.db.FileStorageHelper;
 import uk.ac.ucl.excites.sapelli.collector.io.FileStorageProvider;
 import uk.ac.ucl.excites.sapelli.collector.io.FileStorageRemovedException;
 import uk.ac.ucl.excites.sapelli.collector.io.FileStorageUnavailableException;
+import uk.ac.ucl.excites.sapelli.collector.util.CrashReporter;
+import uk.ac.ucl.excites.sapelli.shared.io.FileStorageException;
+import uk.ac.ucl.excites.sapelli.shared.util.android.Debug;
+import uk.ac.ucl.excites.sapelli.storage.db.sql.sqlite.SQLiteRecordStore;
 
 /**
  * Abstract super class for our activities.
@@ -44,7 +70,10 @@ public abstract class BaseActivity extends AppCompatActivity
 	static private final int HIDE_BUTTON = -1;
 	static private final boolean DEFAULT_FINISH_ON_DIALOG_OK = false;
 	static private final boolean DEFAULT_FINISH_ON_DIALOG_CANCEL = false;
-	
+
+	static private final String CRASHLYTICS_VERSION_INFO = "VERSION_INFO";
+	static private final String CRASHLYTICS_BUILD_INFO = "BUILD_INFO";
+
 	private CollectorApp app;
 	private FileStorageProvider fileStorageProvider;
 
@@ -474,5 +503,95 @@ public abstract class BaseActivity extends AppCompatActivity
 	{
 		showOKDialog(R.string.info, messageId, false);
 	}
-	
+
+	protected void init(){
+		// Build info:
+		getCollectorApp().setBuildInfo(BuildInfo.GetInstance(getApplicationContext()));
+
+		Debug.d("CollectorApp started.\nBuild info:\n" + getCollectorApp().getBuildInfo().getAllInfo());
+
+		// Start Fabric
+		setFabric();
+
+		// Set Timber for logging
+		setTimber();
+
+		// Set Stetho for debugging
+		setStetho();
+
+		// Get collector preferences:
+		getCollectorApp().setPreferences(new CollectorPreferences(getApplicationContext()));
+
+		// Initialise file storage:
+		try {
+//            getCollectorApp().setFileStorageProvider(initialiseFileStorage()); // throws FileStorageException
+			getCollectorApp().setFileStorageProvider(FileStorageHelper.initialiseFileStorage(getCollectorApp(),this));
+		} catch (FileStorageException fse) {
+//            getCollectorApp().fileStorageException = fse; // postpone throwing until getFileStorageProvider() is called!
+		}
+
+		// Set up a CrashReporter (will use dumps folder):
+		if (getCollectorApp().getFileStorageProvider() != null)
+			Thread.setDefaultUncaughtExceptionHandler(new CrashReporter(getCollectorApp().getFileStorageProvider(), getResources().getString(R.string.app_name)));
+
+	}
+
+	/**
+	 * Set up Fabric
+	 */
+	private void setFabric() {
+		// Set up Crashlytics, disabled for debug builds
+		final CrashlyticsCore crashlyticsCore = new CrashlyticsCore.Builder().disabled(BuildConfig.DEBUG).build();
+		final Crashlytics crashlyticsKit = new Crashlytics.Builder().core(crashlyticsCore).build();
+		Fabric.with(this, crashlyticsKit);
+
+		Crashlytics.setString(CRASHLYTICS_VERSION_INFO, getCollectorApp().getBuildInfo().getNameAndVersion() + " [" + getCollectorApp().getBuildInfo().getExtraVersionInfo() + "]");
+		Crashlytics.setString(CRASHLYTICS_BUILD_INFO, getCollectorApp().getBuildInfo().getBuildInfo());
+	}
+
+	/**
+	 * Set up Timber for logging
+	 */
+	private void setTimber() {
+		// Enable Timber
+		if (BuildConfig.DEBUG)
+			Timber.plant(new DebugTree());
+		else
+			Timber.plant(new CrashlyticsTree());
+	}
+
+	/**
+	 * Set up Stetho for debugging
+	 */
+	private void setStetho() {
+		// Enable Stetho in Debug versions
+		if (!BuildConfig.DEBUG)
+			return;
+
+		Timber.d("Enable Stetho");
+
+		Stetho.initialize(Stetho.newInitializerBuilder(this)
+				.enableWebKitInspector(new InspectorModulesProvider() {
+					@Override
+					public Iterable<ChromeDevtoolsDomain> get() {
+						return new Stetho.DefaultInspectorModulesBuilder(BaseActivity.this)
+								.provideDatabaseDriver(createCustomDatabaseDriver(BaseActivity.this))
+								.finish();
+					}
+				}).build());
+	}
+
+	private SqliteDatabaseDriver createCustomDatabaseDriver(Context context) {
+		return new SqliteDatabaseDriver(context, new DatabaseFilesProvider() {
+			@Override
+			public List<File> getDatabaseFiles() {
+				List<File> dbs = new ArrayList<>();
+				final String dbPath = SQLiteRecordStore.GetDBFileName(getCollectorApp().getFileStorageProvider().getDBFolder(false).getAbsolutePath() + File.separator + getCollectorApp().DATABASE_BASENAME);
+				Timber.d("Try to connect to db at: %s", dbPath);
+				dbs.add(new File(dbPath));
+				return dbs;
+			}
+		}, new DefaultDatabaseConnectionProvider());
+	}
+
 }
