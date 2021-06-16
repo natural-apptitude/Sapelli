@@ -82,7 +82,7 @@ public class AndroidSQLiteRecordStore extends SQLiteRecordStore
 			throw new DBException("Failed to open writable SQLite database", e);
 		}
 		if(loggingEnabled || BuildConfig.DEBUG)
-			client.logInfo(TAG + "> Opened SQLite database: " + db.getPath());
+			client.logInfo(TAG + "> Opened SQLite database: " + db.getPath() + " version " + db.getVersion());
 		
 		// Set initialisation args:
 		setInitialisationArguments(helper.newDB, targetVersion, upgrader);

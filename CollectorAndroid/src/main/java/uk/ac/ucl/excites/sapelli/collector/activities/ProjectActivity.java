@@ -55,7 +55,8 @@ public abstract class ProjectActivity extends BaseActivity implements StoreHandl
 	protected void onCreate(Bundle savedInstanceState)
 	{
 		super.onCreate(savedInstanceState); // sets the app member
-	
+		init();
+
 		// Get project store:
 		try
 		{

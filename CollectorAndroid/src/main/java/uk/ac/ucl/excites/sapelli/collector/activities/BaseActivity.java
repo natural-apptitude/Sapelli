@@ -524,7 +524,6 @@ public abstract class BaseActivity extends AppCompatActivity
 
 		// Initialise file storage:
 		try {
-//            getCollectorApp().setFileStorageProvider(initialiseFileStorage()); // throws FileStorageException
 			getCollectorApp().setFileStorageProvider(FileStorageHelper.initialiseFileStorage(getCollectorApp(),this));
 		} catch (FileStorageException fse) {
 //            getCollectorApp().fileStorageException = fse; // postpone throwing until getFileStorageProvider() is called!

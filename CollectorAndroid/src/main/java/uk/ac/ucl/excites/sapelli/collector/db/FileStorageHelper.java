@@ -32,7 +32,6 @@ public class FileStorageHelper {
 
     static public FileStorageProvider initialiseFileStorage(CollectorApp app, Context context) throws FileStorageException {
         File sapelliFolder = null;
-        android.os.Debug.waitForDebugger();
         // Try to get Sapelli folder path from preferences:
         try {
             sapelliFolder = new File(app.getPreferences().getSapelliFolderPath());

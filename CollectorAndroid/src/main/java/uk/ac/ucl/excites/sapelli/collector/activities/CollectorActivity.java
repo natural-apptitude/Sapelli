@@ -45,12 +45,8 @@ import android.view.MotionEvent;
 import android.view.Window;
 import android.view.WindowManager;
 import uk.ac.ucl.excites.sapelli.collector.BuildConfig;
-import uk.ac.ucl.excites.sapelli.collector.BuildInfo;
-import uk.ac.ucl.excites.sapelli.collector.CollectorApp;
 import uk.ac.ucl.excites.sapelli.collector.R;
 import uk.ac.ucl.excites.sapelli.collector.control.AndroidCollectorController;
-import uk.ac.ucl.excites.sapelli.collector.db.CollectorPreferences;
-import uk.ac.ucl.excites.sapelli.collector.db.FileStorageHelper;
 import uk.ac.ucl.excites.sapelli.collector.model.Control;
 import uk.ac.ucl.excites.sapelli.collector.model.MediaFile;
 import uk.ac.ucl.excites.sapelli.collector.model.Trigger;
@@ -61,7 +57,6 @@ import uk.ac.ucl.excites.sapelli.collector.ui.fields.AndroidAudioUI;
 import uk.ac.ucl.excites.sapelli.collector.ui.fields.AndroidPhotoUI;
 import uk.ac.ucl.excites.sapelli.collector.util.ProjectRunHelpers;
 import uk.ac.ucl.excites.sapelli.collector.util.ViewServer;
-import uk.ac.ucl.excites.sapelli.shared.io.FileStorageException;
 import uk.ac.ucl.excites.sapelli.shared.util.android.ActivityHelpers;
 import uk.ac.ucl.excites.sapelli.shared.util.android.Debug;
 import uk.ac.ucl.excites.sapelli.shared.util.android.DeviceControl;
@@ -116,15 +111,6 @@ public class CollectorActivity extends ProjectActivity
 		supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
 		
 		super.onCreate(savedInstanceState); // sets app, projectStore & recordStore members!
-		init();
-//		getCollectorApp().setPreferences(new CollectorPreferences(getApplicationContext()));
-//		getCollectorApp().setBuildInfo(BuildInfo.GetInstance(getApplicationContext()));
-//		try {
-////            getCollectorApp().setFileStorageProvider(initialiseFileStorage()); // throws FileStorageException
-//			getCollectorApp().setFileStorageProvider(FileStorageHelper.initialiseFileStorage(getCollectorApp(),this));
-//		} catch (FileStorageException fse) {
-////            getCollectorApp().fileStorageException = fse; // postpone throwing until getFileStorageProvider() is called!
-//		}
 
 		// Retrieve the tmpPhotoLocation for the saved state
 		if(savedInstanceState != null && savedInstanceState.containsKey(TEMP_PHOTO_PATH_KEY))

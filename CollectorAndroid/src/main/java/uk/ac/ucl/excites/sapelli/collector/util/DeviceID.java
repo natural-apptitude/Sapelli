@@ -342,7 +342,7 @@ public class DeviceID
 			//Debug.d("The Device ID is being initialised.");
 
 			// Call the functions to initialise IMEI, Android ID, Hardware Serial Number, Wi-Fi MAC and Bluetooth MAC:
-			initIMEI(context);
+			// initIMEI(context);
 			initAndroidID(context);
 			initHardwareSerialNumber();
 			initWiFiAddress(context); // may set up a broadcast receiver
