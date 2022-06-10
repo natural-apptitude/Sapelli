@@ -36,6 +36,7 @@ import uk.ac.ucl.excites.sapelli.collector.CollectorClient;
 import uk.ac.ucl.excites.sapelli.collector.activities.SplashActivity;
 import uk.ac.ucl.excites.sapelli.collector.db.CollectorPreferences;
 import uk.ac.ucl.excites.sapelli.collector.db.CollectorSQLRecordStoreUpgrader;
+import uk.ac.ucl.excites.sapelli.collector.db.FileStorageHelper;
 import uk.ac.ucl.excites.sapelli.collector.db.ProjectRecordStore;
 import uk.ac.ucl.excites.sapelli.collector.db.ProjectStore;
 import uk.ac.ucl.excites.sapelli.collector.io.AndroidFileStorageProvider;
@@ -82,6 +83,7 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
     private RecordStore recordStore;
 
     private CollectorApp app;
+    private Context context;
 
     static final int PROJECTS = 1;
     static final int PROJECT_FILE = 2;
@@ -93,9 +95,8 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
 
     private static HashMap<String, String> PROJECTS_PROJECTION_MAP;
 
-    private SQLiteDatabase db;
+//    private SQLiteDatabase db;
     static final String DATABASE_NAME = "Sapelli-RecordStore.sqlite3";
-//    static final String PROJECTS_TABLE_NAME = "Collector_Projects";
 
     static final UriMatcher uriMatcher;
 
@@ -112,120 +113,28 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
     public CollectorContentProvider() {
     }
 
-    private FileStorageProvider initialiseFileStorage() throws FileStorageException {
-        CollectorPreferences preferences = new CollectorPreferences(getContext());
-        File sapelliFolder = null;
+//    private static class DatabaseHelper extends SQLiteOpenHelper {
+//        DatabaseHelper(Context context) {
+//            super(context, DATABASE_NAME, null, 3);
+//        }
+//
+//        @Override
+//        public void onCreate(SQLiteDatabase sqLiteDatabase) {
+//
+//        }
+//
+//        @Override
+//        public void onUpgrade(SQLiteDatabase sqLiteDatabase, int i, int i1) {
+//
+//        }
+//    }
 
-        // Try to get Sapelli folder path from preferences:
-        try {
-            sapelliFolder = new File(preferences.getSapelliFolderPath());
-        } catch (NullPointerException npe) {
+    private void initialise(){
+        if(fileStorageProvider != null){
+            return;
         }
 
-        // Did we get the folder path from preferences? ...
-        if (sapelliFolder == null) {    // No: first installation or reset
-
-            // Find appropriate files dir (using application-specific folder, which is removed upon app uninstall!):
-            File[] paths = DeviceControl.getExternalFilesDirs(getContext(), null);
-            if (paths != null && paths.length != 0) {
-                // We count backwards because we prefer secondary external storage (which is likely to be on an SD card rather unremovable memory)
-                for (int p = paths.length - 1; p >= 0; p--)
-                    if (isMountedReadableWritableDir(paths[p])) {
-                        sapelliFolder = paths[p];
-                        break;
-                    }
-            }
-        } else {    // Yes, we got path from preferences, check if it is available ...
-            if (!isMountedReadableWritableDir(sapelliFolder)) // (will also attempt to create the directory if it doesn't exist)
-                // No :-(
-                throw new FileStorageRemovedException(sapelliFolder.getAbsolutePath());
-        }
-
-        // If we get here this means we have a non-null sapelliFolder object representing an accessible path...
-
-        // Try to get the Android Downloads folder...
-        File downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-//        if (!isMountedReadableWritableDir(downloadsFolder)) // check if we can access it (will also attempt to create the directory if it doesn't exist)
-            // No :-(
-//            throw new FileStorageException("Cannot access downloads folder: " + downloadsFolder.getAbsolutePath());
-
-        // Create a test database to get the DB folder
-        TestDatabaseHelper testDatabaseHelper = new TestDatabaseHelper(getContext());
-
-        // Try to get the Databases folder...
-        File databaseFolder = testDatabaseHelper.getDatabaseFolder();
-        if (!isMountedReadableWritableDir(databaseFolder)) // check if we can access it (will also attempt to create the directory if it doesn't exist)
-            // No :-(
-            throw new FileStorageException("Cannot access database folder: " + databaseFolder.getAbsolutePath());
-
-        final AndroidFileStorageProvider androidFileStorageProvider = new AndroidFileStorageProvider(sapelliFolder, databaseFolder, downloadsFolder);
-
-        return androidFileStorageProvider; // Android specific subclass of FileStorageProvider, which generates .nomedia files
-    }
-
-    private boolean isMountedReadableWritableDir(File dir) throws FileStorageException {
-        try {
-            return    // Null check:
-                    (dir != null)
-                            // Try to create the directory if it is not there
-                            && FileHelpers.createDirectory(dir)
-                            /* Check storage state, accepting both MEDIA_MOUNTED and MEDIA_UNKNOWN.
-                             * 	The MEDIA_UNKNOWN state occurs when a path isn't backed by known storage media; e.g. the SD Card on
-                             * the Samsung Xcover 2 (the detection of which we have to force in DeviceControl#getExternalFilesDirs()). */
-                            && (Environment.MEDIA_MOUNTED.equals(EnvironmentCompat.getStorageState(dir)) || EnvironmentCompat.MEDIA_UNKNOWN.equals(EnvironmentCompat.getStorageState(dir)))
-                            // Check whether we have read & write access to the directory:
-                            && FileHelpers.isReadableWritableDirectory(dir);
-        } catch (Exception e) {
-            throw new FileStorageException("Unable to create or determine status of directory: " + (dir != null ? dir.getAbsolutePath() : "null"), e);
-        }
-    }
-
-    private static class DatabaseHelper extends SQLiteOpenHelper {
-        DatabaseHelper(Context context) {
-            super(context, DATABASE_NAME, null, 3);
-        }
-
-        @Override
-        public void onCreate(SQLiteDatabase sqLiteDatabase) {
-
-        }
-
-        @Override
-        public void onUpgrade(SQLiteDatabase sqLiteDatabase, int i, int i1) {
-
-        }
-    }
-
-    @Override
-    public int delete(Uri uri, String selection, String[] selectionArgs) {
-        // Implement this to handle requests to delete one or more rows.
-        throw new UnsupportedOperationException("Not yet implemented");
-    }
-
-    @Override
-    public String getType(Uri uri) {
-        switch (uriMatcher.match(uri)) {
-            case PROJECTS:
-                return "vnd.android.cursor.dir/vnd.collector/projects";
-            default:
-                throw new IllegalArgumentException("Unsupported URI: " + uri);
-        }
-    }
-
-    @Override
-    public Uri insert(Uri uri, ContentValues values) {
-        // TODO: Implement this to handle requests to insert a new row.
-        throw new UnsupportedOperationException("Not yet implemented");
-    }
-
-    @Override
-    public boolean onCreate() {
-        Context context = getContext();
-        DatabaseHelper dbHelper = new DatabaseHelper(context);
-        db = dbHelper.getReadableDatabase();
-        app = (CollectorApp) context.getApplicationContext();
-
-        fileStorageProvider = initialiseFileStorage();
+        fileStorageProvider = FileStorageHelper.initialiseFileStorage(app,context);
 
         try {
             projectRecordStore = new ProjectRecordStore(collectorClient, fileStorageProvider);
@@ -234,8 +143,14 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
         } catch (DBException e) {
             e.printStackTrace();
         }
+    }
 
-        return (db == null) ? false : true;
+    @Override
+    public boolean onCreate() {
+        context = getContext();
+        app = (CollectorApp) context.getApplicationContext();
+        app.setPreferences(new CollectorPreferences(app));
+        return true;
     }
 
     private MatrixCursor projectListToCursor(List<Project> projects) {
@@ -258,60 +173,13 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
         for (Column column : columns) {
             columnNames.add(column.getName());
         }
-//        Map<Schema, List<Record>> recordsBySchema = new HashMap<Schema, List<Record>>();
-//
-//        for (Record record : records) {
-//            List<Record> recordsForSchema;
-//            if (recordsBySchema.containsKey(record.getSchema())) {
-//                recordsForSchema = recordsBySchema.get(record.getSchema());
-//            } else {
-//                recordsForSchema = new ArrayList<Record>();
-//                recordsBySchema.put(record.getSchema(), recordsForSchema);
-//            }
-//            recordsForSchema.add(record);
-//        }
-//
-//        List<String> columnNames = new ArrayList<String>();
-//
-//        for (Schema schema : recordsBySchema.keySet()) {
-//            List<Column<?>> columns = schema.getColumns(true);
-//            for (Column column : columns) {
-//                columnNames.add(column.getName());
-//            }
-//        }
 
         MatrixCursor cursor = new MatrixCursor(columnNames.toArray(new String[columnNames.size()]));
-
-//        for (Map.Entry<Schema, List<Record>> entry : recordsBySchema.entrySet()) {
-//            Schema schema = entry.getKey();
-//            List<Column<?>> columns = schema.getColumns(true);
-//            for (Record record : entry.getValue()) {
-//                MatrixCursor.RowBuilder recordRow = cursor.newRow();
-//                for (Column column : columns) {
-//                    recordRow.add(column.getName(), column.retrieveValueAsString(record, true));
-//                }
-//            }
-//        }
 
         for(Record record: records){
             MatrixCursor.RowBuilder recordRow = cursor.newRow();
             for (Column column : columns) {
-//                Field field = form.getField(column.getName());
-//                if(field != null && field instanceof MediaField){
-//                    MediaField mediaField = (MediaField)field;
-//                    List<MediaFile> files = mediaField.getAttachments(fileStorageProvider,record);
-//                    if(files.isEmpty()){
-//                        recordRow.add(column.getName(),null);
-//                    } else {
-//                        StringBuilder sb = new StringBuilder();
-//                        for(MediaFile mediaFile : files){
-//                            sb.append(mediaFile.file.getName() + ";");
-//                        }
-//                        recordRow.add(column.getName(),sb.toString());
-//                    }
-//                } else {
                     recordRow.add(column.getName(), column.retrieveValueAsString(record, true));
-//                }
             }
         }
         return cursor;
@@ -331,6 +199,7 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
     @Override
     public Cursor query(Uri uri, String[] projection, String selection,
                         String[] selectionArgs, String sortOrder) {
+        initialise();
         MatrixCursor cursor = null;
         List<String> path = uri.getPathSegments();
         Project project = null;
@@ -339,8 +208,6 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
 
         if (match > -1 && match != PROJECTS) {
             Integer projectID = Integer.parseInt(path.get(1));
-//            Integer fingerprint = Integer.parseInt(path.get(2));
-//            project = projectRecordStore.retrieveProject(projectID, fingerprint);
             project = getProject(projectID);
         }
 
@@ -351,39 +218,9 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
                 break;
             case RECORDS:
                 RecordsQuery query = new RecordsQuery(Source.From(project.getStartForm().getSchema()));
-//                RecordsQuery query = new RecordsQuery(Source.From(project.getModel()));
                 List<Record> records = recordStore.retrieveRecords(query);
-
-                // Something like
-//                MediaField mField = (MediaField) project.getStartForm();
-//                mField.getAttachment(fileStorageProvider,records.get(0),1234);
-
-//                project.getStartForm().getSchema()
                 cursor = recordsListToCursor(records,project);
                 break;
-//                RecordsQuery rq = new RecordsQuery(Source.From(project.getModel()));
-//                List<Record> rr = recordStore.retrieveRecords(rq);
-//                Iterator<Record> ri = rr.iterator();
-//
-//                while(ri.hasNext()){
-//                    Record ra = ri.next();
-//                    if(ra.get)
-//                }
-//
-//                rr.iterator();
-//                Integer recordID = Integer.parseInt(path.get(2));
-//
-//                recordStore.retrieveRecord(new SingleRecordQuery() {
-//                    @Override
-//                    protected Record reduce(List<Record> records) {
-//                        return null;
-//                    }
-//
-//                    @Override
-//                    public <R, E extends Throwable> R acceptExecutor(Executor<R, E> executor) throws E {
-//                        return null;
-//                    }
-//                })
         }
 
         if(cursor != null) {
@@ -397,6 +234,8 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
     @Override
     public ParcelFileDescriptor openFile(@NonNull Uri uri, @NonNull String mode) throws FileNotFoundException {
         // project/<id>/file/<folder?>/file
+        initialise();
+
         int match = uriMatcher.match(uri);
         List<String> path = uri.getPathSegments();
 
@@ -406,15 +245,8 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
         } else {
             filename = path.get(3) + "/" + path.get(4);
         }
-//        String p = path.get(3);
-
         Integer projectID = Integer.parseInt(path.get(1));
         Project project = getProject(projectID);
-
-//        List<String> pathList = path.subList(3,path.size());
-//        for(String p: pathList){
-//            filename = ""
-//        }
 
         if(project == null){
             throw new FileNotFoundException("Unknown project");
@@ -442,6 +274,29 @@ public class CollectorContentProvider extends ContentProvider implements StoreHa
         // TODO: Implement this to handle requests to update one or more rows.
         throw new UnsupportedOperationException("Not yet implemented");
     }
+
+    @Override
+    public Uri insert(Uri uri, ContentValues values) {
+        // TODO: Implement this to handle requests to insert a new row.
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+
+    @Override
+    public int delete(Uri uri, String selection, String[] selectionArgs) {
+        // Implement this to handle requests to delete one or more rows.
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+
+    @Override
+    public String getType(Uri uri) {
+        switch (uriMatcher.match(uri)) {
+            case PROJECTS:
+                return "vnd.android.cursor.dir/vnd.collector/projects";
+            default:
+                throw new IllegalArgumentException("Unsupported URI: " + uri);
+        }
+    }
+
 
     /**
      * Create a "Test.db" in the default location of Android. Use this to get the directory where
